@@ -1,0 +1,26 @@
+name: x86probe
+on:
+  push:
+    branches: [x86probe]
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        ref: [main, colored-jacobian]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: SciML/PETScDiffEq.jl
+          ref: ${{ matrix.ref }}
+      - uses: actions/checkout@v4
+        with:
+          path: probe
+      - uses: julia-actions/setup-julia@v2
+        with:
+          version: '1.10'
+          arch: x86
+      - uses: julia-actions/cache@v2
+      - run: julia --project=. -e 'using Pkg; Pkg.instantiate()'
+      - run: julia --project=. probe/x86.jl
