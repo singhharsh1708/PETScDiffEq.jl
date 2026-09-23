@@ -3,17 +3,17 @@ on:
   push:
     branches: [x86probe]
 jobs:
-  probe:
+  bisect:
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        ref: [float32-complex]
+        cut: [0, 11, 12, 13, 40, 68, 69, 79]
     steps:
       - uses: actions/checkout@v4
         with:
           repository: SciML/PETScDiffEq.jl
-          ref: ${{ matrix.ref }}
+          ref: float32-complex
       - uses: actions/checkout@v4
         with:
           path: probe
@@ -22,5 +22,5 @@ jobs:
           version: '1.10'
           arch: x86
       - uses: julia-actions/cache@v2
-      - run: julia --project=. -e 'using Pkg; Pkg.instantiate()'
-      - run: for ph in stops-then-disk t0-then-disk; do REF=${{ matrix.ref }} julia --project=. probe/x86.jl $ph 2>&1 | grep -v "PETSC ERROR" | tail -14; done
+      - run: julia --project=. -e 'using Pkg; Pkg.add(["DiffEqCallbacks", "Logging", "Test"]); Pkg.instantiate()'
+      - run: julia --project=. probe/bisect.jl ${{ matrix.cut }} 2>&1 | grep -E "CUT=|ran |item error" | tail -20
