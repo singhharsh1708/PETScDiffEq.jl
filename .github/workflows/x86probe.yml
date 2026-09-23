@@ -23,4 +23,4 @@ jobs:
           arch: x86
       - uses: julia-actions/cache@v2
       - run: julia --project=. -e 'using Pkg; Pkg.add(["DiffEqCallbacks", "Logging", "Test"]); Pkg.instantiate()'
-      - run: julia --project=. probe/bisect.jl ${{ matrix.cut }} 2>&1 | grep -E "CUT=|ran |item error" | tail -20
+      - run: julia --project=. probe/bisect.jl ${{ matrix.cut }} 2>&1 | grep -v "PETSC ERROR" | grep -E "CUT=|ran |item error|ERROR" | tail -20

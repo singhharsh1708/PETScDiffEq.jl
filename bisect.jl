@@ -23,11 +23,11 @@ cd(joinpath(pwd(), "test"))
 for h in header
     Core.eval(Main, h)
 end
-ts_seen = 0
+ts_seen = Ref(0)
 for a in items
     if is_ts(a)
-        ts_seen += 1
-        ts_seen > cut && continue
+        ts_seen[] += 1
+        ts_seen[] > cut && continue
     end
     try
         redirect_stdout(devnull) do
