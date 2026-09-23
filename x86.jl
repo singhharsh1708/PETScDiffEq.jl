@@ -47,6 +47,19 @@ elseif ph == "nopivot"
         q(() -> run(S))
     end
     disk()
+elseif ph == "stops-then-disk"
+    for alg in (TSImplicit("bdf"), TSARKIMEX("3"))
+        stops = [1.0f6 / 7 * k for k in 1:6]
+        sol = q(() -> solve(ODEProblem(decay!, Float32[1], (0.0f0, 1.0f6)), alg; tstops = stops, abstol = 1.0f-5, reltol = 1.0f-4))
+        println("  stops ", nameof(typeof(alg)), " ", sol.retcode)
+    end
+    disk()
+elseif ph == "t0-then-disk"
+    for t0 in (1.0f4, 1.0f5), alg in (TSImplicit("bdf"), TSRosW(), TSARKIMEX("3"))
+        sol = q(() -> solve(ODEProblem(decay!, Float32[1], (t0, t0 + 10)), alg))
+        println("  t0 ", t0, " ", nameof(typeof(alg)), " ", sol.retcode)
+    end
+    disk()
 elseif ph == "stops"
     for span in ((0.0f0, 1.0f6), (0.0f0, 1.0f5)), alg in (TSImplicit("bdf"), TSRosW(), TSARKIMEX("3"))
         stops = [span[2] / 7 * k for k in 1:6]
