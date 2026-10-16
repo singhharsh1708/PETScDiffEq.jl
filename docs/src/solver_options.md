@@ -81,6 +81,9 @@ Past the step's end, where DiffEqCallbacks' `PositiveDomain` and `GeneralDomain`
 `integrator(t)` extrapolates that cubic Hermite interpolant, as OrdinaryDiffEq extrapolates
 its own, and it raises there with a mass matrix, a `DAEProblem` or a finished integrator.
 `change_t_via_interpolation!` stays inside the step.
+On a `DAEProblem`, `get_du` is the derivative its initialization or its last step paired with
+the state, the slope at the step's end for `TSDAE("bdf")` and the step's chord for the other
+subtypes, and it raises an `ArgumentError` once the state has changed since.
 `integrator(t; idxs)`, a vector of times and `integrator(out, t)` take the forms
 OrdinaryDiffEq's integrator does.
 
