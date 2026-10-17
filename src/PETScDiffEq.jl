@@ -7563,7 +7563,12 @@ function _reinit_unlocked(
     written = filter(!in((:abstol, :reltol)), getfield(integ.opts, :written))
     kept = NamedTuple{Tuple(written)}(map(k -> getfield(integ.opts, k), Tuple(written)))
     setup_kwargs = merge(integ.kwargs, kept)
-    saveat === nothing || (setup_kwargs = merge(setup_kwargs, (saveat = saveat,)))
+    # As in OrdinaryDiffEq, a new saveat keeps the save_start and save_end init worked out.
+    saveat === nothing || (
+        setup_kwargs = merge(
+            setup_kwargs, (saveat = saveat, save_start = old.save_start, save_end = old.save_end),
+        )
+    )
     reinit_dae || (setup_kwargs = merge(setup_kwargs, (initializealg = SciMLBase.NoInit(),)))
     if !erase_sol && !old.ctx.dense && old.ctx.save_idxs !== nothing && !isempty(old.ctx.ts)
         setup_kwargs = merge(setup_kwargs, (dense = false,))
