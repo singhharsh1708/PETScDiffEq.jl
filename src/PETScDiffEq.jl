@@ -5894,6 +5894,7 @@ function _setup(
                         "$(join(distributable, ", ")) can",
                 ),
             )
+            _refuse_span_options(petsclib, ts, t0, _max_time(tf))
             running = _running_name(petsclib, ts)
             _refuse_method(running, has_mass, has_jac, is_split, is_dae)
             if chosen == "irk" && dm !== nothing
@@ -7645,6 +7646,23 @@ end
 
 # PETSc 3.22's build for 32-bit x86 fails MATCHSTEP's `bad hmax` check on long spans.
 _bad_hmax() = Sys.ARCH === :i686
+
+# The span is set before the options, so an option can move either end of it.
+function _refuse_span_options(pl, ts, t0, tmax)
+    LibPETSc.TSGetTime(pl, ts) == t0 && LibPETSc.TSGetMaxTime(pl, ts) == tmax || throw(
+        ArgumentError(
+            "`-ts_init_time` and `-ts_max_time` cannot move the ends of `tspan`; " *
+                "change `tspan` instead",
+        ),
+    )
+    _exact_final_time(pl, ts) == LibPETSc.TS_EXACTFINALTIME_STEPOVER && throw(
+        ArgumentError(
+            "`-ts_exact_final_time stepover` ends the solve past the end of `tspan`; " *
+                "use `matchstep` or `interpolate`",
+        ),
+    )
+    return nothing
+end
 
 # PETSc's steps for these never reach TSAdaptChoose, which is where MATCHSTEP acts.
 const _SKIPS_MATCHSTEP = ("basicsymplectic", "glle", "mprk")
