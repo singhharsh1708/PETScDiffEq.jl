@@ -625,6 +625,11 @@ const _NEEDS_OTHER_SETUP = Dict(
     "pseudo" => "is pseudo-transient continuation toward a steady state and runs past the final time",
 )
 
+const _ADAPT_NEEDS_SETUP = Dict(
+    "cfl" => "needs TSSetCFLTimeLocal",
+    "history" => "needs TSAdaptHistorySetHistory",
+)
+
 const _EXPLICIT_ONLY = ("euler", "glee", "rk", "ssp")
 
 const _ROSW_NO_STEP = ("lassp3p4s2c", "llssp3p4s2c", "ark3")
@@ -5943,7 +5948,14 @@ function _setup(
             h.pivot_raises = _pivot_raises(petsclib, ts) ||
                 _option_flag(effective_options, "ts_error_if_step_fails")
             _count_solves!(petsclib, ts.ptr, ctx, ctxptr)
-            fixed = LibPETSc.TSAdaptGetType(petsclib, LibPETSc.TSGetAdapt(petsclib, ts)) == "none"
+            adapt_type = LibPETSc.TSAdaptGetType(petsclib, LibPETSc.TSGetAdapt(petsclib, ts))
+            haskey(_ADAPT_NEEDS_SETUP, adapt_type) && throw(
+                ArgumentError(
+                    "PETScDiffEq cannot drive `-ts_adapt_type $adapt_type`, which " *
+                        "$(_ADAPT_NEEDS_SETUP[adapt_type]); use `basic`, `dsp` or `none`",
+                ),
+            )
+            fixed = adapt_type == "none"
             adapts = _adapts(running)
             dt_option = any(o -> _names_option(o, "ts_dt"), effective_options)
             if !dt_given && !dt_option && !(adaptive && adapts === true)
