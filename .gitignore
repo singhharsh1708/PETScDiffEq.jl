@@ -1,9 +1,11 @@
 Manifest.toml
 /docs/build/
 /docs/Manifest.toml
+/docs/src/assets/Project.toml
 *.jl.cov
 *.jl.*.cov
 *.jl.mem
 .DS_Store
 test/qa/Manifest.toml
 test/adjoint/Manifest.toml
+test/mpi/Manifest.toml
