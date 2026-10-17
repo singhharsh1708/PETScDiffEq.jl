@@ -6420,7 +6420,7 @@ The integrator `SciMLBase.init` returns for a PETSc TS algorithm. Step it with
 restart it with `reinit!`. Between steps `u`, `uprev`, `t`, `tprev` and `dt`
 are readable, `integ(t)`, `integ(t, Val{1})`, `integ(t; idxs)` and `integ(out, t)` give the
 state or its slope inside the step just taken, and `add_tstop!` schedules a time to land on
-exactly.
+exactly. Assigning `u` or `t` takes effect at the next step, as `set_u!` and `set_t!` do.
 
 These are in the types PETSc steps in. The clock, and so `t`, `dt` and the saved times, is
 `Float32` for a `Float32` or `ComplexF32` state with a `Float32` span and `Float64`
@@ -7365,6 +7365,13 @@ function _take_written_tolerances!(integ::PETScIntegrator)
     return nothing
 end
 
+function _take_written_time!(integ::PETScIntegrator)
+    h = integ.h
+    integ.tdir * integ.t == LibPETSc.TSGetTime(h.petsclib, h.ts) && return nothing
+    _set_t_unlocked(integ, integ.t)
+    return nothing
+end
+
 function _take_written_state!(integ::PETScIntegrator, restart::Bool = true)
     h = integ.h
     _everywhere(h.ctx.comm, _read_state!(integ.ucache, h.ctx, h.u) == integ.u) &&
@@ -7797,6 +7804,7 @@ function _step_unlocked(integ::PETScIntegrator, outer = nothing)
         _finish!(integ)
         return nothing
     end
+    outer === nothing && _take_written_time!(integ)
     outer === nothing && _take_written_state!(integ)
     outer === nothing && _take_written_tolerances!(integ)
     dtprev = integ.tdir * LibPETSc.TSGetTimeStep(pl, h.ts)
