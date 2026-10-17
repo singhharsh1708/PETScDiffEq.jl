@@ -6993,9 +6993,13 @@ end
 _ncond(::SciMLBase.ContinuousCallback) = 1
 _ncond(cb::SciMLBase.VectorContinuousCallback) = cb.len
 
+_watched(u, idxs::Nothing) = u
+_watched(u, idxs::Number) = u[idxs]
+_watched(u, idxs) = view(u, idxs)
+
 function _fill_conditions!(out, integ::PETScIntegrator, cb::SciMLBase.ContinuousCallback, t)
     integ.h.ctx.ncondition += 1
-    out[1] = cb.condition(_state_at(integ, t), t, integ)
+    out[1] = cb.condition(_watched(_state_at(integ, t), cb.idxs), t, integ)
     return out
 end
 
@@ -7003,7 +7007,7 @@ function _fill_conditions!(
         out, integ::PETScIntegrator, cb::SciMLBase.VectorContinuousCallback, t,
     )
     integ.h.ctx.ncondition += 1
-    cb.condition(out, _state_at(integ, t), t, integ)
+    cb.condition(out, _watched(_state_at(integ, t), cb.idxs), t, integ)
     return out
 end
 
