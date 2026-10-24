@@ -2129,6 +2129,29 @@ const _STEP_SYMBOLS = (
 
 _symbol(petsclib, ::Val{name}) where {name} = _symbol(petsclib, name)
 
+const PETSC_VERSIONS = Dict{String, VersionNumber}()
+
+_petsc_version(petsclib) = get!(PETSC_VERSIONS, petsclib.petsc_library) do
+    I = PETSc.inttype(petsclib)
+    major, minor, sub = Ref{I}(0), Ref{I}(0), Ref{I}(0)
+    _check_code(
+        ccall(
+            _symbol(petsclib, :PetscGetVersionNumber), LibPETSc.PetscErrorCode,
+            (Ptr{Cvoid}, Ptr{Cvoid}, Ptr{Cvoid}, Ptr{Cvoid}), major, minor, sub, C_NULL,
+        ),
+    )
+    VersionNumber(major[], minor[], sub[])
+end
+
+# PETSc 3.25 renames these options and still reads the old names, the only ones 3.22 reads.
+const _RENAMED_OPTIONS = (ts_dt = "ts_time_step", ts_max_reject = "ts_max_step_rejections")
+
+function _names_petsc_option(petsclib, opt, name)
+    _names_option(opt, name) && return true
+    new = get(_RENAMED_OPTIONS, Symbol(name), nothing)
+    return new !== nothing && _petsc_version(petsclib) >= v"3.25" && _names_option(opt, new)
+end
+
 # OrdinaryDiffEq applies dtmin only when adaptive. `force_dtmin` hands it to PETSc.
 _floor(R, dtmin, force_dtmin, adaptive) =
     force_dtmin || !adaptive || dtmin === nothing ? zero(R) : abs(R(dtmin))
@@ -2772,8 +2795,6 @@ function _check_attempts!(
     return LibPETSc.PetscErrorCode(0)
 end
 
-const _MAX_REJECT_OPTIONS = ("ts_max_reject", "ts_max_step_rejections")
-
 function _arm_attempts!(ctx, ts_ptr)
     ctx.attempt_margin < 0 && return nothing
     pl = ctx.petsclib
@@ -2799,7 +2820,7 @@ end
 function _retry_failed_solves!(pl, ts, ctx, ptr, opts)
     for (name, setter) in
         (("ts_max_snes_failures", :TSSetMaxSNESFailures), ("ts_max_reject", :TSSetMaxStepRejections))
-        any(o -> _names_option(o, name), opts) && continue
+        any(o -> _names_petsc_option(pl, o, name), opts) && continue
         _check_code(
             ccall(
                 _symbol(pl, setter), LibPETSc.PetscErrorCode, (LibPETSc.CTS, LibPETSc.PetscInt),
@@ -5996,8 +6017,9 @@ _reusable(running, is_split) = first(split(running)) in _REUSED_TYPES ||
 const _REUSED_TYPES = ("rk", "rosw", "bdf", "beuler", "cn", "theta", "euler", "ssp")
 
 const _NO_REUSE_OPTIONS = (
-    "ts_init_time", "ts_max_time", "ts_max_snes_failures", "ts_max_reject", "ts_monitor",
-    "ts_trajectory", "ts_save_trajectory", "ts_view", "ts_adjoint",
+    "ts_init_time", "ts_max_time", "ts_max_snes_failures", "ts_max_reject",
+    "ts_max_step_rejections", "ts_monitor", "ts_trajectory", "ts_save_trajectory",
+    "ts_view", "ts_adjoint",
 )
 
 # The first step `_setup` gives a solve that names no `dt`; `h.ctx.f!` may be reversed.
@@ -6735,7 +6757,9 @@ function _setup(
                 _set_ksp_type!(petsclib, ts, "gmres")
             end
             adapts = _adapts(running)
-            dt_option = any(o -> _names_option(o, "ts_dt"), effective_options)
+            dt_option = any(effective_options) do o
+                _names_petsc_option(petsclib, o, "ts_dt")
+            end
             if !dt_given && !dt_option && !(adaptive && adapts === true)
                 throw(
                     ArgumentError(
@@ -6775,7 +6799,7 @@ function _setup(
             if !fixed && !_uses_ifunction(alg)
                 # PETSc 3.25 renames -ts_max_reject; the pushed options are the only source.
                 raised = any(effective_options) do o
-                    any(n -> _names_option(o, n), _MAX_REJECT_OPTIONS)
+                    _names_petsc_option(petsclib, o, "ts_max_reject")
                 end
                 if raised
                     _set_stage_check!(petsclib, ts, ctx, ptrs.attempt_check)
