@@ -900,6 +900,7 @@ mutable struct TSContext{R, S, A, F, F2, JAC, JBUF, P, L, V}
     inner::Any
     mass_slope::Bool
     tend::R
+    attempt_margin::Int
 end
 
 _distributed(alg::AnyPETScTS) = alg.comm != MPI.COMM_SELF
@@ -2769,6 +2770,19 @@ function _check_attempts!(
         return LibPETSc.PetscErrorCode(CALLBACK_THREW)
     end
     return LibPETSc.PetscErrorCode(0)
+end
+
+const _MAX_REJECT_OPTIONS = ("ts_max_reject", "ts_max_step_rejections")
+
+function _arm_attempts!(ctx, ts_ptr)
+    ctx.attempt_margin < 0 && return nothing
+    pl = ctx.petsclib
+    code, taken = _taken(pl, ts_ptr)
+    _check_code(code)
+    ctx.maxiters - (taken + ctx.nreject + ctx.nfail) > ctx.attempt_margin && return nothing
+    ctx.attempt_margin = -1
+    _set_stage_check!(pl, LibPETSc.TS(ts_ptr, pl), ctx, _callbacks(ctx).attempt_check)
+    return nothing
 end
 
 function _set_stage_check!(pl, ts, ctx, ptr)
@@ -4665,6 +4679,7 @@ end
 
 function _monitor_at!(ctx, ts_ptr, step, t, x)
     try
+        _arm_attempts!(ctx, ts_ptr)
         (ctx.retry_fp || ctx.comm !== nothing) && ctx.workvec == C_NULL &&
             _hold_work_vec!(ctx, ts_ptr)
         tol = _near(t, ctx.tbound)
@@ -6389,7 +6404,7 @@ function _setup(
         force_dtmin && dtmin !== nothing && dtmin != 0,
         nothing, 0, 0, bound,
         false, false, step_limit, false, nothing, nothing, 0, 0, false, shape, nothing,
-        nothing, mass_slope, tf,
+        nothing, mass_slope, tf, -1,
     )::TSContext
     h = Base.inferencebarrier(TSHandles)(
         ctx, petsclib, LibPETSc.TS(petsclib), uvec, nothing, nothing, ad_calls, nothing,
@@ -6757,8 +6772,19 @@ function _setup(
             !fixed && running == "bdf" &&
                 !any(o -> _names_option(o, "snes_lag_jacobian"), effective_options) &&
                 _set_jacobian_lag!(petsclib, _snes(petsclib, ts.ptr), 5)
-            fixed || _uses_ifunction(alg) ||
-                _set_stage_check!(petsclib, ts, ctx, ptrs.attempt_check)
+            if !fixed && !_uses_ifunction(alg)
+                # PETSc 3.25 renames -ts_max_reject; the pushed options are the only source.
+                raised = any(effective_options) do o
+                    any(n -> _names_option(o, n), _MAX_REJECT_OPTIONS)
+                end
+                if raised
+                    _set_stage_check!(petsclib, ts, ctx, ptrs.attempt_check)
+                else
+                    # A TSStep makes at most PETSc's default 11 attempts, so the check, which
+                    # runs at every stage, is installed only once maxiters is that close.
+                    ctx.attempt_margin = 13
+                end
+            end
             ctx.linear = _uses_ifunction(alg) &&
                 _snes_type(petsclib, ts.ptr) in ("ksponly", "ksptransposeonly")
             if running != ctx.alg_name
@@ -8459,6 +8485,7 @@ function _reuse!(h::TSHandles{<:Any, <:Any, R, S}, prob, tstops) where {R, S}
     for i in eachindex(fresh)
         setfield!(ctx, i, fresh[i])
     end
+    ctx.attempt_margin < 0 || _set_stage_check!(pl, ts, ctx, C_NULL)
     # PETSc's counts run on over the solves of one TS; these offsets take back the earlier ones.
     fails = Int(LibPETSc.TSGetSNESFailures(pl, ts))
     ctx.nreject = fails - Int(LibPETSc.TSGetStepRejections(pl, ts))
@@ -8901,6 +8928,7 @@ function _step_unlocked(integ::PETScIntegrator, outer = nothing)
     h.stopped = 0
     (ctx.retry_fp || ctx.comm !== nothing) && ctx.workvec == C_NULL &&
         _hold_work_vec!(ctx, h.ts)
+    _arm_attempts!(ctx, h.ts.ptr)
     failure = _run!(h) do
         LibPETSc.TSStep(pl, h.ts)
         _linear_bdf_slope!(h)
