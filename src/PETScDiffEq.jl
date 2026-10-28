@@ -6626,12 +6626,13 @@ function _setup(
             banded_lu = width !== nothing && width <= _BANDED_LU_WIDTH
             # Without a Newton norm only a residual norm catches a NaN right-hand side, so a linear
             # solve wraps the LU in Richardson, which checks one and needs one step to converge.
+            # The true residual skips the extra triangular solve a preconditioned norm costs.
             banded_linear = banded_lu &&
                 (_ts_type(alg) == "rosw" || _linear_snes(user_options))
             banded_lu && append!(
                 effective_options,
                 banded_linear ?
-                    ["-ksp_type", "richardson"] :
+                    ["-ksp_type", "richardson", "-ksp_norm_type", "unpreconditioned"] :
                     ["-ksp_type", "preonly"],
                 ["-pc_type", "lu", "-pc_factor_mat_ordering_type", "natural"],
             )
