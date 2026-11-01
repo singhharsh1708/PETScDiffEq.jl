@@ -6626,18 +6626,20 @@ function _setup(
             banded_lu = width !== nothing && width <= _BANDED_LU_WIDTH
             # Without a Newton norm only a residual norm catches a NaN right-hand side, so a linear
             # solve wraps the LU in Richardson, which checks one and needs one step to converge.
+            # The true residual skips the triangular solve a preconditioned norm costs.
             banded_linear = banded_lu &&
                 (_ts_type(alg) == "rosw" || _linear_snes(user_options))
             banded_lu && append!(
                 effective_options,
                 banded_linear ?
-                    ["-ksp_type", "richardson"] :
+                    ["-ksp_type", "richardson", "-ksp_norm_type", "unpreconditioned"] :
                     ["-ksp_type", "preonly"],
                 ["-pc_type", "lu", "-pc_factor_mat_ordering_type", "natural"],
             )
-            # PETSc's default -ksp_atol 1e-50 passes a solve that did nothing near underflow.
+            # PETSc's default -ksp_atol 1e-50 passes a solve that did nothing near underflow. On
+            # 32-bit x86 the norm keeps a subnormal residual, which round-off stops from shrinking.
             banded_linear && !any(o -> _names_option(o, "ksp_atol"), user_options) &&
-                append!(effective_options, ["-ksp_atol", "0"])
+                append!(effective_options, ["-ksp_atol", _option(floatmin(R))])
             # ILU(0) preconditions better in the reverse Cuthill-McKee order on wider patterns.
             width === nothing || banded_lu ||
                 append!(effective_options, ["-pc_factor_mat_ordering_type", "rcm"])
