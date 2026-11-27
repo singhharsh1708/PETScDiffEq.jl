@@ -1021,6 +1021,8 @@ function _dm_comm(dm)
 end
 
 function _alg_comm(comm, dm)
+    # The first reduction over `comm` runs before PETSc.initialize would start MPI.
+    comm === nothing || MPI.Initialized() || MPI.Init()
     dm === nothing && return something(comm, MPI.COMM_SELF)
     dm isa LibPETSc.AbstractPetscDM || throw(
         ArgumentError(

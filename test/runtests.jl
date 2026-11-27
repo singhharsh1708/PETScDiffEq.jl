@@ -594,6 +594,17 @@ const ALL_TESTS = Test.DefaultTestSet("PETScDiffEq.jl")
         """
         cmd = `$(Base.julia_cmd()) --project=$(Base.active_project()) -e $script`
         @test success(pipeline(cmd; stdout = devnull, stderr = devnull))
+
+        @testset "a comm solve before MPI.Init" begin
+            script = """
+            using PETScDiffEq, SciMLBase, MPI
+            prob = SciMLBase.ODEProblem((du, u, p, t) -> (du .= -u), [1.0, 2.0], (0.0, 1.0))
+            sol = SciMLBase.solve(prob, PETScDiffEq.TSRK("5dp"; comm = MPI.COMM_WORLD))
+            println(sol.retcode, " ", MPI.Initialized())
+            """
+            cmd = `$(Base.julia_cmd()) --project=$(Base.active_project()) -e $script`
+            @test readlines(pipeline(cmd; stderr = devnull)) == ["Success true"]
+        end
     end
 
     @testset "a solve nested in a quiet one prints what it would print alone" begin
